@@ -95,8 +95,13 @@ void PublishVTK::publish()
 			}
 		}
 
-		if(singleFile != "" || csvListFiles != "")
+		if(singleFile != "" || csvListFiles != ""){
+      stringstream nameStream;
+      nameStream << cloudTopic << "_" << "bla" << ".csv";
+      cloud.save(nameStream.str());
+    
 			cloudPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(cloud, mapFrame, ros::Time::now()));
+    }
 		else
 		{
 			ROS_ERROR_STREAM("No files found");
