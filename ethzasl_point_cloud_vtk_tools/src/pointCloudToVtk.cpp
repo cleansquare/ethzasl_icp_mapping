@@ -30,6 +30,7 @@ class ExportVtk
 	ros::Subscriber cloudSub;
 	const string cloudTopic;
 	const string mapFrame;
+	const string outputVtkFile;
   const bool recordOnce;
 
 	tf::TransformListener tf_listener;
@@ -45,12 +46,12 @@ ExportVtk::ExportVtk(ros::NodeHandle& n):
 	cloudTopic(getParam<string>("cloudTopic", "/static_point_cloud")),
 	mapFrame(getParam<string>("mapFrameId", "/map")),
 	recordOnce(getParam<bool>("recordOnce", "false")),
+	outputVtkFile(getParam<string>("outputVtkFile", "")),
 	transformation(PM::get().TransformationRegistrar.create("RigidTransformation"))
 {
 	// ROS initialization
 	cloudSub = n.subscribe(cloudTopic, 100, &ExportVtk::gotCloud, this);
-	
-	// Parameters for 3D map
+    ROS_INFO("Listening for point cloud data on '%s'.", cloudTopic.c_str());
 }
 
 
@@ -69,14 +70,9 @@ void ExportVtk::gotCloud(const sensor_msgs::PointCloud2& cloudMsgIn)
       ROS_ERROR("I found no good points in the cloud");
       return;
     }
-    else
-    {
-      ROS_INFO("Saving cloud");
-    }
+    ROS_INFO("Saving cloud as VTK file to '%s'.", outputVtkFile.c_str());
     
-    stringstream nameStream;
-    nameStream << "." << cloudTopic << "_" << cloudMsgIn.header.seq << ".vtk";
-    outCloud.save(nameStream.str());
+    outCloud.save(outputVtkFile);
     if(recordOnce)
     {
       ros::shutdown();  
@@ -96,8 +92,8 @@ int main(int argc, char **argv)
 	ExportVtk exporter(n);
 	ros::spin();
 
-  // Wait for the shutdown to finish
-  while(ros::ok()){}
+	// Wait for the shutdown to finish
+	while(ros::ok()){}
 	
 	return 0;
 }

@@ -1,0 +1,9 @@
+<launch>
+    <arg name="inputVtkAsciiFile" default="input.vtk" />
+    <arg name="outputCsvFile" default="output.csv" />
+
+	<node name="vtkToPointCloud" type="vtkToPointCloud" pkg="ethzasl_point_cloud_vtk_tools" output="screen">
+		<param name="inputVtkAsciiFile" value="$(arg inputVtkAsciiFile)" />
+        <param name="outputCsvFile" value="$(arg outputCsvFile)" />
+	</node>
+</launch>

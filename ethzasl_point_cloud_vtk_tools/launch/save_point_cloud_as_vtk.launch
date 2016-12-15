@@ -1,0 +1,12 @@
+<launch>
+    <arg name="cloudTopic" default="/point_map" />
+    <arg name="mapFrameId" default="/world" />
+    <arg name="outputVtkFile" default="output.vtk" />
+
+	<node name="pointCloudToVtk" type="pointCloudToVtk" pkg="ethzasl_point_cloud_vtk_tools" output="screen">
+		<param name="cloudTopic" value="$(arg cloudTopic)" />
+		<param name="mapFrameId" value="$(arg mapFrameId)" />
+		<param name="recordOnce" value="true" />
+        <param name="outputVtkFile" value="$(arg outputVtkFile)" />
+	</node>
+</launch>

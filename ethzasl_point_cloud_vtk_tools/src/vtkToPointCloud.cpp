@@ -29,7 +29,8 @@ class PublishVTK
 	const string cloudTopic;
 	const string csvListFiles;
 	const string dataDirectory;
-	const string singleFile;
+	const string inputVtkAsciiFile;
+	const string outputCsvFile;
 	const double publishRate;
 	const bool pauseEachMsg;
 
@@ -39,8 +40,7 @@ class PublishVTK
 
 public:
 	PublishVTK(ros::NodeHandle& n);
-	void publish();
-	void run();
+	void convertAndPublish();
 };
 
 PublishVTK::PublishVTK(ros::NodeHandle& n):
@@ -49,7 +49,8 @@ PublishVTK::PublishVTK(ros::NodeHandle& n):
 	cloudTopic(getParam<string>("cloudTopic", "/point_cloud")),
 	csvListFiles(getParam<string>("csvListFiles", "")),
 	dataDirectory(getParam<string>("dataDirectory", "")),
-	singleFile(getParam<string>("singleFile", "")),
+	inputVtkAsciiFile(getParam<string>("inputVtkAsciiFile", "")),
+	outputCsvFile(getParam<string>("outputCsvFile", "")),
 	publishRate(getParam<double>("publishRate", 1.0)),
 	pauseEachMsg(getParam<bool>("pauseEachMsg", false))
 {
@@ -63,9 +64,16 @@ PublishVTK::PublishVTK(ros::NodeHandle& n):
 	currentId = 0;
 }
 
-void PublishVTK::publish()
+void PublishVTK::convertAndPublish()
 {
-	if (cloudPub.getNumSubscribers())
+    cout << "PublishVTK::convertAndPublish started..." << endl;
+
+	DP cloud;
+	if(inputVtkAsciiFile != "") {
+		cloud = DP::load(inputVtkAsciiFile);
+        cout << "Loaded data from " << inputVtkAsciiFile << endl;
+    }
+	else
 	{
 
 		DP cloud;
@@ -94,14 +102,20 @@ void PublishVTK::publish()
 				}
 			}
 		}
+	}
+
+	if(outputCsvFile != "") {
+        stringstream nameStream;
+        cout << "Writing output to " << outputCsvFile << endl;
+        cloud.save(outputCsvFile);
 
 		if(singleFile != "" || csvListFiles != ""){
-      stringstream nameStream;
-      nameStream << cloudTopic << "_" << "bla" << ".csv";
-      cloud.save(nameStream.str());
-    
-			cloudPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(cloud, mapFrame, ros::Time::now()));
-    }
+	      stringstream nameStream;
+	      nameStream << cloudTopic << "_" << "bla" << ".csv";
+	      cloud.save(nameStream.str());
+
+				cloudPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(cloud, mapFrame, ros::Time::now()));
+	    }
 		else
 		{
 			ROS_ERROR_STREAM("No files found");
@@ -110,15 +124,6 @@ void PublishVTK::publish()
 	}
 }
 
-void PublishVTK::run()
-{
-	ros::Rate r(publishRate);
-	while (ros::ok())
-	{
-		publish();
-		r.sleep();
-	}
-}
 
 // Main function supporting the ExportVtk class
 int main(int argc, char **argv)
@@ -126,7 +131,7 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "VtkToPointCloud_node");
 	ros::NodeHandle n;
 	PublishVTK pub(n);
-	pub.run();
+	pub.convertAndPublish();
 	
 	return 0;
 }
