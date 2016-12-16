@@ -11,8 +11,10 @@ sensor_msgs
 nav_msgs
 tf
 tf_conversions
-libpointmatcher
 libpointmatcher_ros)
+
+# This was tested for a system install of libpointmatcher
+find_package(libpointmatcher CONFIG)
 
 catkin_package(
 CATKIN_DEPENDS roscpp rospy rosbag std_msgs geometry_msgs sensor_msgs nav_msgs
@@ -51,12 +53,14 @@ endif(CMAKE_COMPILER_IS_GNUCXX)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-include_directories(${catkin_INCLUDE_DIRS})
+add_definitions(-DBOOST_DATE_TIME_POSIX_TIME_STD_CONFIG)
+
+include_directories(${catkin_INCLUDE_DIRS} ${libpointmatcher_INCLUDE_DIRS})
 
 add_executable(pointCloudToVtk src/pointCloudToVtk.cpp)
-target_link_libraries(pointCloudToVtk ${catkin_LIBRARIES})
+target_link_libraries(pointCloudToVtk ${catkin_LIBRARIES} ${libpointmatcher_LIBRARIES})
 
 add_executable(vtkToPointCloud src/vtkToPointCloud.cpp)
-target_link_libraries(vtkToPointCloud ${catkin_LIBRARIES})
+target_link_libraries(vtkToPointCloud ${catkin_LIBRARIES} ${libpointmatcher_LIBRARIES})
 
 
