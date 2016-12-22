@@ -439,7 +439,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		publishLock.lock();
 		TOdomToMap = Ticp * TOdomToScanner;
 		// Publish tf
-		tfBroadcaster.sendTransform(PointMatcher_ros::eigenMatrixToStampedTransform<float>(TOdomToMap, mapFrame, odomFrame, stamp));
+		//tfBroadcaster.sendTransform(PointMatcher_ros::eigenMatrixToStampedTransform<float>(TOdomToMap, mapFrame, odomFrame, stamp));
 		publishLock.unlock();
 		processingNewCloud = false;
 		
@@ -579,11 +579,18 @@ void Mapper::publishLoop(double publishPeriod)
 
 void Mapper::publishTransform()
 {
-	if(processingNewCloud == false)
+  //static ros::WallTime last_update_time = ros::WallTime::now();
+  
+	//if(processingNewCloud == false)
 	{
 		publishLock.lock();
 		// Note: we use now as timestamp to refresh the tf and avoid other buffer to be empty
 		tfBroadcaster.sendTransform(PointMatcher_ros::eigenMatrixToStampedTransform<float>(TOdomToMap, mapFrame, odomFrame, ros::Time::now()));
+    
+    //ros::WallTime now = ros::WallTime::now();
+    //ROS_INFO("diff: %f ms", (now - last_update_time).toSec() * 1000.0);
+    //last_update_time = now;
+    
 		publishLock.unlock();
 	}
 }
