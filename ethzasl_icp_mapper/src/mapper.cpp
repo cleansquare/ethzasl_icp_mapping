@@ -117,7 +117,7 @@ protected:
 	void gotCloud(const sensor_msgs::PointCloud2& cloudMsgIn);
 	void processCloud(unique_ptr<DP> cloud, const std::string& scannerFrame, const ros::Time& stamp, uint32_t seq);
 	void processNewMapIfAvailable();
-	void setMap(DP* newPointCloud);
+	void setMap(DP* newPointCloud, bool publish_without_subs = false);
 	DP* updateMap(DP* newPointCloud, const PM::TransformationParameters Ticp, bool updateExisting);
 	void waitForMapBuildingCompleted();
 	
@@ -514,7 +514,7 @@ void Mapper::processNewMapIfAvailable()
 	#endif // BOOST_VERSION >= 104100
 }
 
-void Mapper::setMap(DP* newPointCloud)
+void Mapper::setMap(DP* newPointCloud, bool publish_without_subs)
 {
 	// delete old map
 	if (mapPointCloud)
@@ -526,7 +526,7 @@ void Mapper::setMap(DP* newPointCloud)
 	
 	// Publish map point cloud
 	// FIXME this crash when used without descriptor
-	if (mapPub.getNumSubscribers())
+	if (publish_without_subs ||  mapPub.getNumSubscribers())
 		mapPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(*mapPointCloud, mapFrame, mapCreationTime));
 }
 
@@ -638,7 +638,7 @@ bool Mapper::loadMap(ethzasl_icp_mapper::LoadMap::Request &req, ethzasl_icp_mapp
 	TOdomToMap = PM::TransformationParameters::Identity(dim,dim);
 	publishLock.unlock();
 
-	setMap(cloud);
+	setMap(cloud, true);
 	
 	return true;
 }
