@@ -345,14 +345,14 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 	// Dimension of the point cloud, important since we handle 2D and 3D
 	const int dimp1(newPointCloud->features.rows());
 
-	ROS_INFO("Processing new point cloud");
+	ROS_DEBUG("Processing new point cloud");
 	{
 		timer t; // Print how long take the algo
 		
 		// Apply filters to incoming cloud, in scanner coordinates
 		inputFilters.apply(*newPointCloud);
 		
-		ROS_INFO_STREAM("Input filters took " << t.elapsed() << " [s]");
+		ROS_DEBUG_STREAM("Input filters took " << t.elapsed() << " [s]");
 	}
 	
 	string reason;
@@ -427,7 +427,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		
 		// Ensure minimum overlap between scans
 		const double estimatedOverlap = icp.errorMinimizer->getOverlap();
-		ROS_INFO_STREAM("Overlap: " << estimatedOverlap);
+		ROS_DEBUG_STREAM("Overlap: " << estimatedOverlap);
 		if (estimatedOverlap < minOverlap)
 		{
 			ROS_ERROR_STREAM("Estimated overlap too small, ignoring ICP correction!");
@@ -495,7 +495,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 	int realTimeRatio = 100*t.elapsed() / (stamp.toSec()-lastPoinCloudTime.toSec());
 	ROS_INFO_STREAM("[TIME] Total ICP took: " << t.elapsed() << " [s]");
 	if(realTimeRatio < 80)
-		ROS_INFO_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
+		ROS_DEBUG_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
 	else
 		ROS_WARN_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
 
