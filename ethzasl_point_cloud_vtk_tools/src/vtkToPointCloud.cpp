@@ -75,7 +75,7 @@ void PublishVTK::convertAndPublish()
     }
 	else
 	{
-
+    /*
 		DP cloud;
 		if(singleFile != "")
 			cloud = DP::load(singleFile);
@@ -102,13 +102,14 @@ void PublishVTK::convertAndPublish()
 				}
 			}
 		}
+		*/
 	}
 
 	if(outputCsvFile != "") {
         stringstream nameStream;
         cout << "Writing output to " << outputCsvFile << endl;
         cloud.save(outputCsvFile);
-
+    /*
 		if(singleFile != "" || csvListFiles != ""){
 	      stringstream nameStream;
 	      nameStream << cloudTopic << "_" << "bla" << ".csv";
@@ -121,6 +122,7 @@ void PublishVTK::convertAndPublish()
 			ROS_ERROR_STREAM("No files found");
 			abort();
 		}
+		*/
 	}
 }
 
