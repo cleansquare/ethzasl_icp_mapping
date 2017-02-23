@@ -22,6 +22,8 @@
 #include "tf/transform_listener.h"
 #include "eigen_conversions/eigen_msg.h"
 
+#include <std_msgs/Float64.h>
+
 // Services
 #include "std_msgs/String.h"
 #include "std_srvs/Empty.h"
@@ -53,6 +55,7 @@ class Mapper
 	ros::Publisher outlierPub;
 	ros::Publisher odomPub;
 	ros::Publisher odomErrorPub;
+  ros::Publisher overlapPub;
 	
 	// Services
 	ros::ServiceServer getPointMapSrv;
@@ -262,6 +265,8 @@ Mapper::Mapper(ros::NodeHandle& n, ros::NodeHandle& pn):
 	setModeSrv = pn.advertiseService("set_mode", &Mapper::setMode, this);
 	getModeSrv = pn.advertiseService("get_mode", &Mapper::getMode, this);
 	getBoundedMapSrv = pn.advertiseService("get_bounded_map", &Mapper::getBoundedMap, this);
+  
+  overlapPub = pn.advertise<std_msgs::Float64>("overlap", 2, false);
 
 	// refreshing tf transform thread
 	publishThread = boost::thread(boost::bind(&Mapper::publishLoop, this, tfRefreshPeriod));
@@ -428,6 +433,11 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		// Ensure minimum overlap between scans
 		const double estimatedOverlap = icp.errorMinimizer->getOverlap();
 		ROS_DEBUG_STREAM("Overlap: " << estimatedOverlap);
+    
+    std_msgs::Float64 overlap;
+    overlap.data = estimatedOverlap;
+    overlapPub.publish(overlap);
+    
 		if (estimatedOverlap < minOverlap)
 		{
 			ROS_ERROR_STREAM("Estimated overlap too small, ignoring ICP correction!");
