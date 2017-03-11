@@ -427,6 +427,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		PM::TransformationParameters Ticp;
 
 		Ticp = icp(*newPointCloud, TscannerToMap);
+    Ticp = TscannerToMap;
 
 		ROS_DEBUG_STREAM("Ticp:\n" << Ticp);
 		
