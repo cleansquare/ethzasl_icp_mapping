@@ -74,7 +74,8 @@ class Mapper
 	PM::DataPointsFilters mapPreFilters;
 	PM::DataPointsFilters mapPostFilters;
 	PM::DataPoints *mapPointCloud;
-	PM::ICPSequence icp;
+  PM::ICPSequence icp;
+  PM::ICPSequence icp_global;
 	unique_ptr<PM::Transformation> transformation;
 	
 	// multi-threading mapper
@@ -107,21 +108,29 @@ class Mapper
 	boost::thread publishThread;
 	boost::mutex publishLock;
 	ros::Time publishStamp;
+
+  ros::Subscriber trigger_global_reloc_sub_;
 	
-	tf::TransformListener tfListener;
+  tf::TransformListener tfListener;
 	tf::TransformBroadcaster tfBroadcaster;
+
+  sensor_msgs::PointCloud2ConstPtr last_cloud_;
 	
 public:
 	Mapper(ros::NodeHandle& n, ros::NodeHandle& pn);
 	~Mapper();
 	
 protected:
+
+  void triggerGlobalReloc(const std_msgs::Empty& msg);
+
 	void gotScan(const sensor_msgs::LaserScan& scanMsgIn);
-	void gotCloud(const sensor_msgs::PointCloud2& cloudMsgIn);
+  void gotCloud(const sensor_msgs::PointCloud2ConstPtr& cloudMsgIn);
 	void processCloud(unique_ptr<DP> cloud, const std::string& scannerFrame, const ros::Time& stamp, uint32_t seq);
+  void processCloudGlobal(unique_ptr<DP> cloud, const std::string& scannerFrame, const ros::Time& stamp, uint32_t seq);
 	void processNewMapIfAvailable();
 	void setMap(DP* newPointCloud, bool publish_without_subs = false);
-	DP* updateMap(DP* newPointCloud, const PM::TransformationParameters Ticp, bool updateExisting);
+  DP* updateMap(DP* newPointCloud, const PM::TransformationParameters Ticp, bool updateExisting);
 	void waitForMapBuildingCompleted();
 	
 	void publishLoop(double publishPeriod);
@@ -173,6 +182,27 @@ Mapper::Mapper(ros::NodeHandle& n, ros::NodeHandle& pn):
 	// set logger
 	if (getParam<bool>("useROSLogger", false))
 		PointMatcherSupport::setLogger(new PointMatcherSupport::ROSLogger);
+
+  string configFileNameGlobal;
+  if (ros::param::get("~icpConfigGlobal", configFileNameGlobal))
+  {
+      ifstream ifs(configFileNameGlobal.c_str());
+      if (ifs.good())
+      {
+        icp_global.loadFromYaml(ifs);
+        ROS_INFO("Loaded global icp config from file");
+      }
+      else
+      {
+        ROS_ERROR_STREAM("Cannot load global ICP config from YAML file " << configFileNameGlobal);
+        icp_global.setDefault();
+      }
+
+  }
+
+  //icp_global.setDefault();
+
+
 
 	// load configs
 	string configFileName;
@@ -248,6 +278,10 @@ Mapper::Mapper(ros::NodeHandle& n, ros::NodeHandle& pn):
 		ROS_INFO_STREAM("No map post-filters config file given, not using these filters");
 	}
 
+
+  trigger_global_reloc_sub_ = n.subscribe("/trigger_reloc",2, &Mapper::triggerGlobalReloc, this);
+
+
 	// topics and services initialization
 	if (getParam<bool>("subscribe_scan", true))
 		scanSub = n.subscribe("scan", inputQueueSize, &Mapper::gotScan, this);
@@ -303,13 +337,29 @@ void Mapper::gotScan(const sensor_msgs::LaserScan& scanMsgIn)
 	}
 }
 
-void Mapper::gotCloud(const sensor_msgs::PointCloud2& cloudMsgIn)
+void Mapper::gotCloud(const sensor_msgs::PointCloud2ConstPtr& cloudMsgIn)
 {
 	if(localizing)
 	{
-		unique_ptr<DP> cloud(new DP(PointMatcher_ros::rosMsgToPointMatcherCloud<float>(cloudMsgIn)));
-		processCloud(move(cloud), cloudMsgIn.header.frame_id, cloudMsgIn.header.stamp, cloudMsgIn.header.seq);
+    unique_ptr<DP> cloud(new DP(PointMatcher_ros::rosMsgToPointMatcherCloud<float>(*cloudMsgIn)));
+    processCloud(move(cloud), cloudMsgIn->header.frame_id, cloudMsgIn->header.stamp, cloudMsgIn->header.seq);
 	}
+
+  last_cloud_ = cloudMsgIn;
+}
+
+void Mapper::triggerGlobalReloc(const std_msgs::Empty& msg)
+{
+  if (last_cloud_.get()){
+    unique_ptr<DP> cloud(new DP(PointMatcher_ros::rosMsgToPointMatcherCloud<float>(*last_cloud_)));
+    processCloudGlobal(move(cloud), last_cloud_->header.frame_id, last_cloud_->header.stamp, last_cloud_->header.seq);
+
+  }else{
+
+    ROS_ERROR("No last cloud available, cannot globally localize");
+    return;
+  }
+
 }
 
 struct BoolSetter
@@ -466,8 +516,8 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		// Publish outliers
 		if (outlierPub.getNumSubscribers())
 		{
-			//DP outliers = PM::extractOutliers(transformation->compute(*newPointCloud, Ticp), *mapPointCloud, 0.6);
-			//outlierPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(outliers, mapFrame, mapCreationTime));
+      //DP outliers = PM::extractOutliers(transformation->compute(*newPointCloud, Ticp), *mapPointCloud, 0.6);
+      //outlierPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(outliers, mapFrame, mapCreationTime));
 		}
 
 		// check if news points should be added to the map
@@ -512,6 +562,165 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 	lastPoinCloudTime = stamp;
 }
 
+
+void Mapper::processCloudGlobal(unique_ptr<DP> newPointCloud, const std::string& scannerFrame, const ros::Time& stamp, uint32_t seq)
+{
+  processingNewCloud = true;
+  BoolSetter stopProcessingSetter(processingNewCloud, false);
+
+  // if the future has completed, use the new map
+  processNewMapIfAvailable();
+
+  // IMPORTANT:  We need to receive the point clouds in local coordinates (scanner or robot)
+  timer t;
+
+  // Convert point cloud
+  const size_t goodCount(newPointCloud->features.cols());
+  if (goodCount == 0)
+  {
+    ROS_ERROR("I found no good points in the cloud");
+    return;
+  }
+
+  // Dimension of the point cloud, important since we handle 2D and 3D
+  const int dimp1(newPointCloud->features.rows());
+
+  ROS_DEBUG("Processing new point cloud");
+  {
+    timer t; // Print how long take the algo
+
+    // Apply filters to incoming cloud, in scanner coordinates
+    inputFilters.apply(*newPointCloud);
+
+    ROS_DEBUG_STREAM("Input filters took " << t.elapsed() << " [s]");
+  }
+
+  string reason;
+  // Initialize the transformation to identity if empty
+  if(!icp_global.hasMap())
+  {
+    // we need to know the dimensionality of the point cloud to initialize properly
+    publishLock.lock();
+    TOdomToMap = PM::TransformationParameters::Identity(dimp1, dimp1);
+    publishLock.unlock();
+  }
+
+  // Fetch transformation from scanner to odom
+  // Note: we don't need to wait for transform. It is already called in transformListenerToEigenMatrix()
+  PM::TransformationParameters TOdomToScanner;
+  try
+  {
+    TOdomToScanner = PointMatcher_ros::eigenMatrixToDim<float>(
+        PointMatcher_ros::transformListenerToEigenMatrix<float>(
+        tfListener,
+        scannerFrame,
+        odomFrame,
+        stamp
+      ), dimp1);
+  }
+  catch(tf::ExtrapolationException e)
+  {
+    ROS_ERROR_STREAM("Extrapolation Exception. stamp = "<< stamp << " now = " << ros::Time::now() << " delta = " << ros::Time::now() - stamp);
+    return;
+  }
+
+
+  ROS_DEBUG_STREAM("TOdomToScanner(" << odomFrame<< " to " << scannerFrame << "):\n" << TOdomToScanner);
+  ROS_DEBUG_STREAM("TOdomToMap(" << odomFrame<< " to " << mapFrame << "):\n" << TOdomToMap);
+
+  const PM::TransformationParameters TscannerToMap = transformation->correctParameters(TOdomToMap * TOdomToScanner.inverse());
+  ROS_DEBUG_STREAM("TscannerToMap (" << scannerFrame << " to " << mapFrame << "):\n" << TscannerToMap);
+
+  // Ensure a minimum amount of point after filtering
+  const int ptsCount = newPointCloud->features.cols();
+  if(ptsCount < minReadingPointCount)
+  {
+    ROS_ERROR_STREAM("Not enough points in newPointCloud: only " << ptsCount << " pts.");
+    return;
+  }
+
+  // Initialize the map if empty
+  if(!icp_global.hasMap())
+  {
+    ROS_ERROR_STREAM("Creating an initial map in global icp, this should not happen");
+    //mapCreationTime = stamp;
+    //setMap(updateMap(newPointCloud.release(), TscannerToMap, false));
+    // we must not delete newPointCloud because we just stored it in the mapPointCloud
+    return;
+  }
+
+  // Check dimension
+  if (newPointCloud->features.rows() != icp_global.getInternalMap().features.rows())
+  {
+    ROS_ERROR_STREAM("Dimensionality missmatch: incoming cloud is " << newPointCloud->features.rows()-1 << " while map is " << icp.getInternalMap().features.rows()-1);
+    return;
+  }
+
+  try
+  {
+    // Apply ICP
+
+    for (size_t i = 0; i < 40; ++i){
+
+
+        int x = rand() % 40 - 20;
+        int y = rand() % 40 - 20;
+
+        Eigen::Matrix4f samplePoint = (Eigen::AngleAxisf(0.1, Eigen::Vector3f(0.0, 0.0, 1.0)) * Eigen::Translation3f(static_cast<float>(x), static_cast<float>(y), 0.0)).matrix();
+
+        PM::TransformationParameters sample_params = PointMatcher_ros::eigenMatrixToDim<float>(samplePoint, dimp1);
+
+        PM::TransformationParameters Ticp;
+
+        Ticp = icp_global(*newPointCloud, sample_params);
+
+        ROS_DEBUG_STREAM("Ticp:\n" << Ticp);
+
+        // Ensure minimum overlap between scans
+        const double estimatedOverlap = icp.errorMinimizer->getOverlap();
+        ROS_DEBUG_STREAM("Overlap: " << estimatedOverlap);
+
+        std_msgs::Float64 overlap;
+        overlap.data = estimatedOverlap;
+        overlapPub.publish(overlap);
+
+        if (estimatedOverlap < minOverlap)
+          {
+            ROS_ERROR_STREAM("Estimated overlap too small, ignoring ICP correction!");
+            return;
+          }
+
+        // Compute tf
+        publishStamp = stamp;
+        publishLock.lock();
+        TOdomToMap = Ticp * TOdomToScanner;
+        // Publish tf
+        //tfBroadcaster.sendTransform(PointMatcher_ros::eigenMatrixToStampedTransform<float>(TOdomToMap, mapFrame, odomFrame, stamp));
+        publishLock.unlock();
+        processingNewCloud = false;
+
+        ROS_DEBUG_STREAM("TOdomToMap:\n" << TOdomToMap);
+        ROS_INFO_STREAM("iter: " << i);
+      }
+
+  }
+  catch (PM::ConvergenceError error)
+  {
+    ROS_ERROR_STREAM("ICP failed to converge: " << error.what());
+    return;
+  }
+
+  //Statistics about time and real-time capability
+  int realTimeRatio = 100*t.elapsed() / (stamp.toSec()-lastPoinCloudTime.toSec());
+  ROS_INFO_STREAM("[TIME] Total ICP took: " << t.elapsed() << " [s]");
+  if(realTimeRatio < 80)
+    ROS_DEBUG_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
+  else
+    ROS_WARN_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
+
+  lastPoinCloudTime = stamp;
+}
+
 void Mapper::processNewMapIfAvailable()
 {
 	#if BOOST_VERSION >= 104100
@@ -533,6 +742,7 @@ void Mapper::setMap(DP* newPointCloud, bool publish_without_subs)
 	// set new map
 	mapPointCloud = newPointCloud;
 	icp.setMap(*mapPointCloud);
+  icp_global.setMap(*mapPointCloud);
 	
 	// Publish map point cloud
 	// FIXME this crash when used without descriptor
@@ -663,6 +873,7 @@ bool Mapper::reset(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res
 	publishLock.unlock();
 
 	icp.clearMap();
+  icp_global.clearMap();
 	
 	return true;
 }
