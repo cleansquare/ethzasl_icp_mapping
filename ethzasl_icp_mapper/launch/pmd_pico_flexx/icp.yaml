@@ -1,24 +1,22 @@
-#readingDataPointsFilters:
+readingDataPointsFilters:
 #  - VoxelGridDataPointsFilter:
-#      vSizeX: 0.05
-#      vSizeY: 0.05
-#      vSizeZ: 0.05
+#      vSizeX: 0.008
+#      vSizeY: 0.008
+#      vSizeZ: 0.008
 
 matcher:
   KDTreeMatcher:
-    maxDist: 6.0
-    knn: 3
-    epsilon: 0.0
+    maxDist: 0.1
+    knn: 10
+    epsilon: 0
 
 outlierFilters:
   - TrimmedDistOutlierFilter:
-     ratio: 0.8
-#  - SurfaceNormalOutlierFilter:
-#     maxAngle: 0.42
-  - GenericDescriptorOutlierFilter:
-     source: reference
-     descName: probabilityStatic
-     useSoftThreshold: 1
+     ratio: 0.95
+#  - GenericDescriptorOutlierFilter:
+#     source: reference
+#     descName: probabilityStatic
+#     useSoftThreshold: 1
 #     threshold: 0.40
   
 errorMinimizer:
@@ -26,8 +24,8 @@ errorMinimizer:
 
 transformationCheckers:
   - DifferentialTransformationChecker:
-      minDiffRotErr: 0.001
-      minDiffTransErr: 0.01
+      minDiffRotErr: 0.0001
+      minDiffTransErr: 0.001
       smoothLength: 4
   - CounterTransformationChecker:
       maxIterationCount: 40
