@@ -341,8 +341,8 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 	timer t;
 
 
-	cerr << "newPointCloud->getNbPoints()" << newPointCloud->getNbPoints() << endl;
-	cerr << "newPointCloud->times.cols()" << newPointCloud->times.cols() << endl;
+//	cerr << "newPointCloud->getNbPoints()" << newPointCloud->getNbPoints() << endl;
+//	cerr << "newPointCloud->times.cols()" << newPointCloud->times.cols() << endl;
 
 	
 	// Convert point cloud
@@ -379,10 +379,10 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		// Apply filters to incoming cloud, in scanner coordinates
 		inputFilters.apply(*newPointCloud);
 		
-		ROS_INFO_STREAM("[ICP] Input filters took " << t.elapsed() << " [s]");
+		ROS_DEBUG_STREAM("[ICP] Input filters took " << t.elapsed() << " [s]");
 	}
-	cerr << "newPointCloud->getNbPoints()" << newPointCloud->getNbPoints() << endl;
-	cerr << "newPointCloud->times.cols()" << newPointCloud->times.cols() << endl;
+//	cerr << "newPointCloud->getNbPoints()" << newPointCloud->getNbPoints() << endl;
+//	cerr << "newPointCloud->times.cols()" << newPointCloud->times.cols() << endl;
 
 	string reason;
 	// Initialize the transformation to identity if empty
@@ -457,7 +457,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		PM::TransformationParameters T_updatedScanner_to_map;
 		PM::TransformationParameters T_updatedScanner_to_cutMap;
 		
-		ROS_INFO_STREAM("[ICP] Computing - reading: " << newPointCloud->getNbPoints() << ", reference: " << icp.getInternalMap().getNbPoints() );
+		ROS_DEBUG_STREAM("[ICP] Computing - reading: " << newPointCloud->getNbPoints() << ", reference: " << icp.getInternalMap().getNbPoints() );
 		//T_updatedScanner_to_map = icp(*newPointCloud, T_scanner_to_map);
 		icpMapLock.lock();
 		T_updatedScanner_to_cutMap = icp(*newPointCloud, T_scanner_to_cutMap);
@@ -487,7 +487,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 		
 		// Ensure minimum overlap between scans
 		const double estimatedOverlap = icp.errorMinimizer->getOverlap();
-		ROS_INFO_STREAM("[ICP] Overlap: " << estimatedOverlap);
+		ROS_DEBUG_STREAM("[ICP] Overlap: " << estimatedOverlap);
 		if (estimatedOverlap < minOverlap)
 		{
 			ROS_ERROR_STREAM("[ICP] Estimated overlap too small, ignoring ICP correction!");
@@ -531,7 +531,7 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 			// make sure we process the last available map
 			mapCreationTime = stamp;
 
-			ROS_INFO("[MAP] Adding new points in a separate thread");
+			ROS_DEBUG("[MAP] Adding new points in a separate thread");
 			
 			mapBuildingTask = MapBuildingTask(boost::bind(&Mapper::updateMap, this, newPointCloud.release(), T_updatedScanner_to_map, true));
 			mapBuildingFuture = mapBuildingTask.get_future();
@@ -552,9 +552,9 @@ void Mapper::processCloud(unique_ptr<DP> newPointCloud, const std::string& scann
 	int realTimeRatio = 100*t.elapsed() / (stamp.toSec()-lastPoinCloudTime.toSec());
 	realTimeRatio *= seq - lastPointCloudSeq;
 
-	ROS_INFO_STREAM("[TIME] Total ICP took: " << t.elapsed() << " [s]");
+	ROS_DEBUG_STREAM("[TIME] Total ICP took: " << t.elapsed() << " [s]");
 	if(realTimeRatio < 80)
-		ROS_INFO_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
+		ROS_DEBUG_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
 	else
 		ROS_WARN_STREAM("[TIME] Real-time capability: " << realTimeRatio << "%");
 
@@ -567,7 +567,7 @@ void Mapper::processNewMapIfAvailable()
 	#if BOOST_VERSION >= 104100
 	if (mapBuildingInProgress && mapBuildingFuture.has_value())
 	{
-		ROS_INFO_STREAM("[MAP] Computation in thread done");
+		ROS_DEBUG_STREAM("[MAP] Computation in thread done");
 		setMap(mapBuildingFuture.get());
 		mapBuildingInProgress = false;
 	}
@@ -591,7 +591,7 @@ void Mapper::setMap(DP* newMapPointCloud)
 	// FIXME this crash when used without descriptor
 	if (mapPub.getNumSubscribers())
 	{
-		ROS_INFO_STREAM("[MAP] publishing " << mapPointCloud->getNbPoints() << " points");
+		ROS_DEBUG_STREAM("[MAP] publishing " << mapPointCloud->getNbPoints() << " points");
 		mapPub.publish(PointMatcher_ros::pointMatcherCloudToRosMsg<float>(*mapPointCloud, mapFrame, mapCreationTime));
 	}
 }
@@ -651,7 +651,7 @@ Mapper::DP* Mapper::updateMap(DP* newPointCloud, const PM::TransformationParamet
 
 		if (!mapExists) 
 		{
-			ROS_INFO_STREAM( "[MAP] Initial map, only filtering points");
+			ROS_DEBUG_STREAM( "[MAP] Initial map, only filtering points");
 			*newPointCloud = transformation->compute(*newPointCloud, T_updatedScanner_to_map); 
 			mapPostFilters.apply(*newPointCloud);
 
@@ -663,7 +663,7 @@ Mapper::DP* Mapper::updateMap(DP* newPointCloud, const PM::TransformationParamet
 		// Early out if no map modification is wanted
 		if(!mapping)
 		{
-			ROS_INFO_STREAM("[MAP] Skipping modification of the map");
+			ROS_DEBUG_STREAM("[MAP] Skipping modification of the map");
 			return mapPointCloud;
 		}
 		
@@ -903,7 +903,7 @@ Mapper::DP* Mapper::updateMap(DP* newPointCloud, const PM::TransformationParamet
 		abort();
 	}
 	
-	ROS_INFO_STREAM("[TIME][MAP] New map available (" << newPointCloud->features.cols() << " pts), update took " << t.elapsed() << " [s]");
+	ROS_DEBUG_STREAM("[TIME][MAP] New map available (" << newPointCloud->features.cols() << " pts), update took " << t.elapsed() << " [s]");
 	
 	return newPointCloud;
 }
@@ -1133,7 +1133,7 @@ bool Mapper::getBoundedMap(ethzasl_icp_mapper::GetBoundedMap::Request &req, ethz
 		}
 	}
 
-	ROS_INFO_STREAM("Extract " << newPtCount << " points from the map");
+	ROS_DEBUG_STREAM("Extract " << newPtCount << " points from the map");
 	
 	cutPointCloud.conservativeResize(newPtCount);
 	cutPointCloud = transformation->compute(cutPointCloud, T.inverse()); 
